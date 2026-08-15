@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Face Tracker</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #111;
+            color: white;
+
+            font-family: Arial, sans-serif;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 15px;
+        }
+
+        #camera {
+            position: relative;
+
+            width: 95vw;
+            max-width: 600px;
+
+            overflow: hidden;
+
+            border-radius: 12px;
+        }
+
+        video {
+            width: 100%;
+            display: block;
+
+            transform: scaleX(-1);
+        }
+
+        canvas {
+            position: absolute;
+
+            top: 0;
+            left: 0;
+
+            width: 100%;
+            height: 100%;
+
+            pointer-events: none;
+
+            transform: scaleX(-1);
+        }
+
+        #status {
+            margin-top: 15px;
+
+            color: #aaa;
+
+            text-align: center;
+        }
+
+        button {
+            margin-top: 15px;
+
+            padding: 12px 20px;
+
+            border: none;
+            border-radius: 8px;
+
+            background: #00cc66;
+            color: white;
+
+            font-size: 16px;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+    <h1>Face Tracker</h1>
+
+
+    <div id="camera">
+
+        <video
+            id="video"
+            autoplay
+            playsinline
+            muted>
+        </video>
+
+        <canvas id="canvas"></canvas>
+
+    </div>
+
+
+    <button id="start">
+        Iniciar câmera
+    </button>
+
+
+    <div id="status">
+        Câmera desligada
+    </div>
+
+
+    <!-- MediaPipe -->
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22"></script>
+
+
+    <script>
+
+        const video =
+            document.getElementById("video");
+
+        const canvas =
+            document.getElementById("canvas");
+
+        const ctx =
+            canvas.getContext("2d");
+
+        const button =
+            document.getElementById("start");
+
+        const status =
+            document.getElementById("status");
+
+
+        let detector = null;
+
+        let cameraLigada = false;
+
+
+        /*
+        ========================================
+        INICIALIZAR MEDIAPIPE
+        ========================================
+        */
+
+        async function iniciarDetector() {
+
+            status.textContent =
+                "Carregando detector...";
+
+
+            const vision =
+                await FilesetResolver.forVisionTasks(
+
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+
+                );
+
+
+            detector =
+                await FaceLandmarker.createFromOptions(
+
+                    vision,
+
+                    {
+
+                        baseOptions: {
+
+                            modelAssetPath:
+                                "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+
+                            delegate: "GPU"
+
+                        },
+
+
+                        runningMode: "VIDEO",
+
+
+                        numFaces: 1
+
+                    }
+
+                );
+
+
+            console.log(
+                "Detector carregado!"
+            );
+
+
+            iniciarCamera();
+
+        }
+
+
+
+        /*
+        ========================================
+        INICIAR CÂMERA
+        ========================================
+        */
+
+        async function iniciarCamera() {
+
+            try {
+
+                const stream =
+                    await navigator.mediaDevices.getUserMedia({
+
+                        video: {
+
+                            facingMode: "user",
+
+                            width: {
+                                ideal: 640
+                            },
+
+                            height: {
+                                ideal: 480
+                            }
+
+                        },
+
+                        audio: false
+
+                    });
+
+
+                video.srcObject = stream;
+
+
+                cameraLigada = true;
+
+
+                status.textContent =
+                    "Procurando rosto...";
+
+
+                video.onloadeddata = () => {
+
+                    ajustarCanvas();
+
+                    rastrear();
+
+                };
+
+            }
+
+            catch (erro) {
+
+                console.error(erro);
+
+
+                status.textContent =
+                    "Não foi possível acessar a câmera.";
+
+            }
+
+        }
+
+
+
+        /*
+        ========================================
+        AJUSTAR CANVAS
+        ========================================
+        */
+
+        function ajustarCanvas() {
+
+            canvas.width =
+                video.videoWidth;
+
+            canvas.height =
+                video.videoHeight;
+
+        }
+
+
+
+        /*
+        ========================================
+        RASTREAMENTO
+        ========================================
+        */
+
+        function rastrear() {
+
+            if (!detector ||
+                video.readyState < 2) {
+
+                requestAnimationFrame(rastrear);
+
+                return;
+
+            }
+
+
+            const tempo =
+                performance.now();
+
+
+            const resultado =
+                detector.detectForVideo(
+
+                    video,
+
+                    tempo
+
+                );
+
+
+            ctx.clearRect(
+
+                0,
+                0,
+                canvas.width,
+                canvas.height
+
+            );
+
+
+            if (
+
+                resultado.faceLandmarks &&
+                resultado.faceLandmarks.length > 0
+
+            ) {
+
+                const pontos =
+                    resultado.faceLandmarks[0];
+
+
+                desenharRosto(pontos);
+
+
+                status.textContent =
+                    "Rosto detectado!";
+
+            }
+
+            else {
+
+                status.textContent =
+                    "Procurando rosto...";
+
+            }
+
+
+            requestAnimationFrame(rastrear);
+
+        }
+
+
+
+        /*
+        ========================================
+        DESENHAR ROSTO
+        ========================================
+        */
+
+        function desenharRosto(pontos) {
+
+
+            /*
+            ------------------------------------
+            ENCONTRAR LIMITES DO ROSTO
+            ------------------------------------
+            */
+
+            let minX = 1;
+            let maxX = 0;
+
+            let minY = 1;
+            let maxY = 0;
+
+
+            for (const ponto of pontos) {
+
+                if (ponto.x < minX)
+                    minX = ponto.x;
+
+
+                if (ponto.x > maxX)
+                    maxX = ponto.x;
+
+
+                if (ponto.y < minY)
+                    minY = ponto.y;
+
+
+                if (ponto.y > maxY)
+                    maxY = ponto.y;
+
+            }
+
+
+            /*
+            ------------------------------------
+            CONVERTER PARA PIXELS
+            ------------------------------------
+            */
+
+            const x =
+                minX * canvas.width;
+
+            const y =
+                minY * canvas.height;
+
+
+            const largura =
+                (maxX - minX) *
+                canvas.width;
+
+
+            const altura =
+                (maxY - minY) *
+                canvas.height;
+
+
+            /*
+            ------------------------------------
+            QUADRADO
+            ------------------------------------
+            */
+
+            ctx.lineWidth = 5;
+
+            ctx.strokeStyle = "#00ff66";
+
+
+            ctx.strokeRect(
+
+                x,
+                y,
+                largura,
+                altura
+
+            );
+
+
+            /*
+            ------------------------------------
+            PONTOS DO ROSTO
+            ------------------------------------
+            */
+
+            ctx.fillStyle = "#ff3333";
+
+
+            for (const ponto of pontos) {
+
+                const px =
+                    ponto.x *
+                    canvas.width;
+
+
+                const py =
+                    ponto.y *
+                    canvas.height;
+
+
+                ctx.beginPath();
+
+
+                ctx.arc(
+
+                    px,
+                    py,
+
+                    2,
+
+                    0,
+                    Math.PI * 2
+
+                );
+
+
+                ctx.fill();
+
+            }
+
+        }
+
+
+
+        /*
+        ========================================
+        BOTÃO
+        ========================================
+        */
+
+        button.addEventListener(
+            "click",
+
+            () => {
+
+                if (!cameraLigada) {
+
+                    iniciarDetector();
+
+                }
+
+            }
+
+        );
+
+    </script>
+
+</body>
+
+</html>
