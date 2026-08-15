@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 
 <head>
+
     <meta charset="UTF-8">
 
     <meta
@@ -21,7 +22,6 @@
             margin: 0;
             background: #111;
             color: white;
-
             font-family: Arial, sans-serif;
 
             display: flex;
@@ -30,7 +30,7 @@
         }
 
         h1 {
-            margin: 15px;
+            margin: 20px;
         }
 
         #camera {
@@ -40,8 +40,9 @@
             max-width: 600px;
 
             overflow: hidden;
-
             border-radius: 12px;
+
+            background: black;
         }
 
         video {
@@ -65,16 +66,8 @@
             transform: scaleX(-1);
         }
 
-        #status {
-            margin-top: 15px;
-
-            color: #aaa;
-
-            text-align: center;
-        }
-
         button {
-            margin-top: 15px;
+            margin-top: 20px;
 
             padding: 12px 20px;
 
@@ -87,12 +80,21 @@
             font-size: 16px;
         }
 
+        #status {
+            margin-top: 15px;
+
+            color: #aaa;
+
+            text-align: center;
+        }
+
     </style>
 
 </head>
 
 
 <body>
+
 
     <h1>Face Tracker</h1>
 
@@ -121,12 +123,18 @@
     </div>
 
 
-    <!-- MediaPipe -->
 
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22"></script>
+    <script type="module">
+
+        import {
+            FaceLandmarker,
+            FilesetResolver
+        }
+
+        from
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22";
 
 
-    <script>
 
         const video =
             document.getElementById("video");
@@ -144,64 +152,79 @@
             document.getElementById("status");
 
 
+
         let detector = null;
 
         let cameraLigada = false;
 
+        let pontosAtuais = null;
+
+
 
         /*
         ========================================
-        INICIALIZAR MEDIAPIPE
+        INICIAR MEDIAPIPE
         ========================================
         */
 
         async function iniciarDetector() {
 
-            status.textContent =
-                "Carregando detector...";
+            try {
+
+                status.textContent =
+                    "Carregando detector...";
 
 
-            const vision =
-                await FilesetResolver.forVisionTasks(
+                const vision =
+                    await FilesetResolver.forVisionTasks(
 
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+                        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
 
-                );
-
-
-            detector =
-                await FaceLandmarker.createFromOptions(
-
-                    vision,
-
-                    {
-
-                        baseOptions: {
-
-                            modelAssetPath:
-                                "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-
-                            delegate: "GPU"
-
-                        },
+                    );
 
 
-                        runningMode: "VIDEO",
+                detector =
+                    await FaceLandmarker.createFromOptions(
+
+                        vision,
+
+                        {
+
+                            baseOptions: {
+
+                                modelAssetPath:
+
+                                    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+
+                                delegate: "GPU"
+
+                            },
+
+                            runningMode: "VIDEO",
+
+                            numFaces: 1
+
+                        }
+
+                    );
 
 
-                        numFaces: 1
-
-                    }
-
-                );
+                status.textContent =
+                    "Detector carregado!";
 
 
-            console.log(
-                "Detector carregado!"
-            );
+                iniciarCamera();
 
+            }
 
-            iniciarCamera();
+            catch (erro) {
+
+                console.error(erro);
+
+                status.textContent =
+                    "Erro ao carregar o detector.";
+
+            }
 
         }
 
@@ -217,51 +240,70 @@
 
             try {
 
+                if (!navigator.mediaDevices) {
+
+                    throw new Error(
+                        "Câmera não disponível."
+                    );
+
+                }
+
+
                 const stream =
-                    await navigator.mediaDevices.getUserMedia({
 
-                        video: {
+                    await navigator
+                        .mediaDevices
+                        .getUserMedia({
 
-                            facingMode: "user",
+                            video: {
 
-                            width: {
-                                ideal: 640
+                                facingMode: "user",
+
+                                width: {
+                                    ideal: 640
+                                },
+
+                                height: {
+                                    ideal: 480
+                                }
+
                             },
 
-                            height: {
-                                ideal: 480
-                            }
+                            audio: false
 
-                        },
-
-                        audio: false
-
-                    });
+                        });
 
 
                 video.srcObject = stream;
-
 
                 cameraLigada = true;
 
 
                 status.textContent =
-                    "Procurando rosto...";
+                    "Câmera funcionando!";
 
 
-                video.onloadeddata = () => {
+                video.onloadeddata =
+                    function () {
 
-                    ajustarCanvas();
+                        canvas.width =
+                            video.videoWidth;
 
-                    rastrear();
+                        canvas.height =
+                            video.videoHeight;
 
-                };
+                        rastrear();
+
+                    };
 
             }
 
             catch (erro) {
 
-                console.error(erro);
+                console.error(
+                    "Erro da câmera:",
+                    erro
+                );
 
 
                 status.textContent =
@@ -275,34 +317,20 @@
 
         /*
         ========================================
-        AJUSTAR CANVAS
-        ========================================
-        */
-
-        function ajustarCanvas() {
-
-            canvas.width =
-                video.videoWidth;
-
-            canvas.height =
-                video.videoHeight;
-
-        }
-
-
-
-        /*
-        ========================================
         RASTREAMENTO
         ========================================
         */
 
         function rastrear() {
 
-            if (!detector ||
-                video.readyState < 2) {
+            if (
+                detector === null ||
+                video.readyState < 2
+            ) {
 
-                requestAnimationFrame(rastrear);
+                requestAnimationFrame(
+                    rastrear
+                );
 
                 return;
 
@@ -327,6 +355,7 @@
 
                 0,
                 0,
+
                 canvas.width,
                 canvas.height
 
@@ -340,11 +369,11 @@
 
             ) {
 
-                const pontos =
+                pontosAtuais =
                     resultado.faceLandmarks[0];
 
 
-                desenharRosto(pontos);
+                desenharRosto();
 
 
                 status.textContent =
@@ -354,13 +383,18 @@
 
             else {
 
+                pontosAtuais = null;
+
+
                 status.textContent =
                     "Procurando rosto...";
 
             }
 
 
-            requestAnimationFrame(rastrear);
+            requestAnimationFrame(
+                rastrear
+            );
 
         }
 
@@ -372,53 +406,91 @@
         ========================================
         */
 
-        function desenharRosto(pontos) {
+        function desenharRosto() {
 
+            if (
+                pontosAtuais === null
+            ) {
 
-            /*
-            ------------------------------------
-            ENCONTRAR LIMITES DO ROSTO
-            ------------------------------------
-            */
-
-            let minX = 1;
-            let maxX = 0;
-
-            let minY = 1;
-            let maxY = 0;
-
-
-            for (const ponto of pontos) {
-
-                if (ponto.x < minX)
-                    minX = ponto.x;
-
-
-                if (ponto.x > maxX)
-                    maxX = ponto.x;
-
-
-                if (ponto.y < minY)
-                    minY = ponto.y;
-
-
-                if (ponto.y > maxY)
-                    maxY = ponto.y;
+                return;
 
             }
 
 
+            let minX = 1;
+
+            let maxX = 0;
+
+            let minY = 1;
+
+            let maxY = 0;
+
+
+
             /*
-            ------------------------------------
+            ====================================
+            ENCONTRAR LIMITES DO ROSTO
+            ====================================
+            */
+
+            for (
+                const ponto
+                of pontosAtuais
+            ) {
+
+                if (
+                    ponto.x < minX
+                ) {
+
+                    minX = ponto.x;
+
+                }
+
+
+                if (
+                    ponto.x > maxX
+                ) {
+
+                    maxX = ponto.x;
+
+                }
+
+
+                if (
+                    ponto.y < minY
+                ) {
+
+                    minY = ponto.y;
+
+                }
+
+
+                if (
+                    ponto.y > maxY
+                ) {
+
+                    maxY = ponto.y;
+
+                }
+
+            }
+
+
+
+            /*
+            ====================================
             CONVERTER PARA PIXELS
-            ------------------------------------
+            ====================================
             */
 
             const x =
-                minX * canvas.width;
+                minX *
+                canvas.width;
+
 
             const y =
-                minY * canvas.height;
+                minY *
+                canvas.height;
 
 
             const largura =
@@ -431,37 +503,45 @@
                 canvas.height;
 
 
+
             /*
-            ------------------------------------
-            QUADRADO
-            ------------------------------------
+            ====================================
+            QUADRADO VERDE
+            ====================================
             */
 
-            ctx.lineWidth = 5;
+            ctx.strokeStyle =
+                "#00ff66";
 
-            ctx.strokeStyle = "#00ff66";
+            ctx.lineWidth = 4;
 
 
             ctx.strokeRect(
 
                 x,
                 y,
+
                 largura,
                 altura
 
             );
 
 
+
             /*
-            ------------------------------------
-            PONTOS DO ROSTO
-            ------------------------------------
+            ====================================
+            PONTOS VERMELHOS
+            ====================================
             */
 
-            ctx.fillStyle = "#ff3333";
+            ctx.fillStyle =
+                "#ff3333";
 
 
-            for (const ponto of pontos) {
+            for (
+                const ponto
+                of pontosAtuais
+            ) {
 
                 const px =
                     ponto.x *
@@ -504,11 +584,14 @@
         */
 
         button.addEventListener(
+
             "click",
 
-            () => {
+            function () {
 
-                if (!cameraLigada) {
+                if (
+                    cameraLigada === false
+                ) {
 
                     iniciarDetector();
 
@@ -519,6 +602,7 @@
         );
 
     </script>
+
 
 </body>
 
