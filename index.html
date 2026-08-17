@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Rastreamento de Mão</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 15px 0;
+        }
+
+        #camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            margin: auto;
+        }
+
+        video {
+            width: 100%;
+            display: block;
+            transform: scaleX(-1);
+        }
+
+        canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+
+            width: 100%;
+            height: 100%;
+
+            transform: scaleX(-1);
+            pointer-events: none;
+        }
+
+        #info {
+            margin: 15px auto;
+            padding: 15px;
+
+            width: 90%;
+            max-width: 500px;
+
+            background: #222;
+            border-radius: 10px;
+        }
+
+        #mapa {
+            position: relative;
+
+            width: 90%;
+            max-width: 500px;
+
+            aspect-ratio: 1 / 1;
+
+            margin: 20px auto;
+
+            background:
+                linear-gradient(#333 1px, transparent 1px),
+                linear-gradient(90deg, #333 1px, transparent 1px);
+
+            background-size: 10% 10%;
+
+            border: 2px solid white;
+        }
+
+        #ponto {
+            position: absolute;
+
+            width: 18px;
+            height: 18px;
+
+            background: red;
+
+            border-radius: 50%;
+
+            transform: translate(-50%, -50%);
+
+            display: none;
+        }
+
+        button {
+            padding: 12px 20px;
+
+            border: none;
+            border-radius: 8px;
+
+            background: #444;
+            color: white;
+
+            font-size: 16px;
+        }
+
+        button:active {
+            background: #666;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Rastreamento de Mão</h1>
+
+    <button id="iniciar">
+        Iniciar câmera
+    </button>
+
+    <div id="camera-container">
+
+        <video id="video" autoplay playsinline></video>
+
+        <canvas id="canvas"></canvas>
+
+    </div>
+
+    <div id="info">
+
+        <div>
+            X:
+            <span id="x">0</span>
+        </div>
+
+        <div>
+            Y:
+            <span id="y">0</span>
+        </div>
+
+        <div>
+            Status:
+            <span id="status">
+                Aguardando...
+            </span>
+        </div>
+
+    </div>
+
+    <h2>Mapa da mão</h2>
+
+    <div id="mapa">
+
+        <div id="ponto"></div>
+
+    </div>
+
+
+    <!-- MediaPipe -->
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+
+    <script>
+
+        const video =
+            document.getElementById("video");
+
+        const canvas =
+            document.getElementById("canvas");
+
+        const ctx =
+            canvas.getContext("2d");
+
+        const iniciar =
+            document.getElementById("iniciar");
+
+        const xTexto =
+            document.getElementById("x");
+
+        const yTexto =
+            document.getElementById("y");
+
+        const status =
+            document.getElementById("status");
+
+        const ponto =
+            document.getElementById("ponto");
+
+
+        let camera;
+
+
+        iniciar.addEventListener("click", async () => {
+
+            status.textContent =
+                "Iniciando câmera...";
+
+            try {
+
+                const stream =
+                    await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: "user"
+                        },
+                        audio: false
+                    });
+
+                video.srcObject = stream;
+
+                await video.play();
+
+                iniciar.style.display =
+                    "none";
+
+                iniciarMediaPipe();
+
+            } catch (erro) {
+
+                console.error(erro);
+
+                status.textContent =
+                    "Não foi possível acessar a câmera.";
+
+            }
+
+        });
+
+
+        function iniciarMediaPipe() {
+
+            const hands =
+                new Hands({
+                    locateFile: (arquivo) => {
+
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${arquivo}`;
+
+                    }
+                });
+
+
+            hands.setOptions({
+
+                maxNumHands: 1,
+
+                modelComplexity: 1,
+
+                minDetectionConfidence: 0.5,
+
+                minTrackingConfidence: 0.5
+
+            });
+
+
+            hands.onResults(resultados => {
+
+                canvas.width =
+                    video.videoWidth;
+
+                canvas.height =
+                    video.videoHeight;
+
+
+                ctx.clearRect(
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height
+                );
+
+
+                if (
+                    resultados.multiHandLandmarks &&
+                    resultados.multiHandLandmarks.length > 0
+                ) {
+
+                    const mao =
+                        resultados.multiHandLandmarks[0];
+
+
+                    /*
+                     * Ponto 9 =
+                     * centro aproximado da palma
+                     */
+
+                    const centro =
+                        mao[9];
+
+
+                    /*
+                     * Coordenadas normalizadas:
+                     *
+                     * X = 0 → esquerda
+                     * X = 1 → direita
+                     *
+                     * Y = 0 → cima
+                     * Y = 1 → baixo
+                     */
+
+                    const x =
+                        centro.x;
+
+                    const y =
+                        centro.y;
+
+
+                    /*
+                     * Converte para porcentagem
+                     */
+
+                    const porcentagemX =
+                        x * 100;
+
+                    const porcentagemY =
+                        y * 100;
+
+
+                    xTexto.textContent =
+                        porcentagemX.toFixed(1) + "%";
+
+
+                    yTexto.textContent =
+                        porcentagemY.toFixed(1) + "%";
+
+
+                    status.textContent =
+                        "Mão detectada";
+
+
+                    /*
+                     * Atualiza o mapa
+                     */
+
+                    ponto.style.display =
+                        "block";
+
+
+                    ponto.style.left =
+                        porcentagemX + "%";
+
+
+                    ponto.style.top =
+                        porcentagemY + "%";
+
+
+                    /*
+                     * Desenha os pontos
+                     */
+
+                    drawConnectors(
+                        ctx,
+                        mao,
+                        HAND_CONNECTIONS,
+                        {
+                            color: "#00ff00",
+                            lineWidth: 3
+                        }
+                    );
+
+
+                    drawLandmarks(
+                        ctx,
+                        mao,
+                        {
+                            color: "#ff0000",
+                            lineWidth: 2,
+                            radius: 5
+                        }
+                    );
+
+                }
+
+                else {
+
+                    status.textContent =
+                        "Nenhuma mão detectada";
+
+                    ponto.style.display =
+                        "none";
+
+                }
+
+            });
+
+
+            camera =
+                new Camera(
+                    video,
+                    {
+
+                        onFrame: async () => {
+
+                            await hands.send({
+                                image: video
+                            });
+
+                        },
+
+                        width: 1280,
+
+                        height: 720
+
+                    }
+                );
+
+
+            camera.start();
+
+        }
+
+    </script>
+
+</body>
+</html>
